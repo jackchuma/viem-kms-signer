@@ -1,16 +1,18 @@
-import {
-  LocalAccount,
-  signTransaction,
-  signTypedData,
-  toAccount,
-} from 'viem/accounts';
+import { LocalAccount, signTypedData, toAccount } from 'viem/accounts';
 import {
   determineCorrectV,
   getEthereumAddress,
   getPublicKey,
   requestKmsSignature,
 } from './utils/kms-utils';
-import { hashMessage, signatureToHex } from 'viem';
+import {
+  Signature,
+  TransactionSerializable,
+  hashMessage,
+  keccak256,
+  serializeTransaction,
+  signatureToHex,
+} from 'viem';
 
 export interface AwsKmsSignerCredentials {
   accessKeyId?: string;
@@ -34,10 +36,10 @@ export class KmsSigner {
   //   return toAccount({
   //     address,
   //     async signMessage({ message }): Promise<`0x${string}`> {
-  //       return await this._signDigest(hashMessage(message));
+  //       return await this._signDigestHex(hashMessage(message));
   //     },
-  //     async signTransaction(transaction, { serializer }) {
-  //       return signTransaction({ privateKey: '0x', transaction, serializer });
+  //     async signTransaction(transaction) {
+  //       return await this._signTransaction(transaction);
   //     },
   //     async signTypedData(typedData) {
   //       return signTypedData({ ...typedData, privateKey: '0x' });
@@ -53,15 +55,29 @@ export class KmsSigner {
     return Promise.resolve(this.ethereumAddress);
   }
 
-  private async _signDigest(digestString: string): Promise<string> {
+  private async _signTransaction(
+    transaction: TransactionSerializable,
+  ): Promise<string> {
+    const serializedTx = serializeTransaction(transaction);
+    const transactionSignature = await this._signDigest(
+      keccak256(serializedTx),
+    );
+    return serializeTransaction(transaction, transactionSignature);
+  }
+
+  private async _signDigest(digestString: string): Promise<Signature> {
     const digestBuffer = Buffer.from(digestString.slice(2), 'hex');
     const sig = await requestKmsSignature(digestBuffer, this.kmsCredentials);
     const ethAddr = await this.getAddress();
     const { v } = await determineCorrectV(digestBuffer, sig.r, sig.s, ethAddr);
-    return signatureToHex({
+    return {
       r: `0x${sig.r.toString('hex')}`,
       s: `0x${sig.s.toString('hex')}`,
       v: BigInt(v),
-    });
+    };
+  }
+
+  private async _signDigestHex(digestString: string): Promise<string> {
+    return signatureToHex(await this._signDigest(digestString));
   }
 }
