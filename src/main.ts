@@ -10,6 +10,11 @@ async function main() {
     keyId: process.env.AWS_KEY_ID as string,
   };
   const signer = new KmsSigner(credentials);
+
+  const account = await signer.getAccount();
+  console.log(account.address);
+  const sig = await account.signMessage({ message: 'Hello World' });
+  console.log({ sig });
 }
 
 main().catch((error) => {

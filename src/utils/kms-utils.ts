@@ -6,7 +6,14 @@ import {
 } from '@aws-sdk/client-kms';
 import { AwsKmsSignerCredentials } from '..';
 import * as asn1 from 'asn1.js';
-import { keccak256, recoverAddress, signatureToHex } from 'viem';
+import {
+  Signature,
+  TransactionSerializable,
+  keccak256,
+  recoverAddress,
+  serializeTransaction,
+  signatureToHex,
+} from 'viem';
 import BN from 'bn.js';
 
 const EcdsaSigAsnParse: {
@@ -116,4 +123,43 @@ function recoverPubKeyFromSig(
       v: BigInt(v),
     }),
   });
+}
+
+export async function signDigestHex(
+  digestString: string,
+  kmsCredentials: AwsKmsSignerCredentials,
+  address: `0x${string}`,
+): Promise<`0x${string}`> {
+  return signatureToHex(
+    await _signDigest(digestString, kmsCredentials, address),
+  );
+}
+
+async function _signDigest(
+  digestString: string,
+  kmsCredentials: AwsKmsSignerCredentials,
+  address: `0x${string}`,
+): Promise<Signature> {
+  const digestBuffer = Buffer.from(digestString.slice(2), 'hex');
+  const sig = await requestKmsSignature(digestBuffer, kmsCredentials);
+  const { v } = await determineCorrectV(digestBuffer, sig.r, sig.s, address);
+  return {
+    r: `0x${sig.r.toString('hex')}`,
+    s: `0x${sig.s.toString('hex')}`,
+    v: BigInt(v),
+  };
+}
+
+export async function signTransaction(
+  transaction: TransactionSerializable,
+  kmsCredentials: AwsKmsSignerCredentials,
+  address: `0x${string}`,
+): Promise<`0x${string}`> {
+  const serializedTx = serializeTransaction(transaction);
+  const transactionSignature = await _signDigest(
+    keccak256(serializedTx),
+    kmsCredentials,
+    address,
+  );
+  return serializeTransaction(transaction, transactionSignature);
 }
