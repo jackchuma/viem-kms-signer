@@ -1,8 +1,14 @@
 # viem-kms-signer
 
-This is a wallet or signer that can be used together with [Viem](https://viem.sh/) applications.
+This is a wallet or signer that can be used together with [Viem](https://viem.sh/) applications backed by an AWS KMS private key.
 
 ## Getting Started
+
+Install the package
+
+```sh
+npm i viem-kms-signer
+```
 
 ```ts
 import { KmsSigner } from 'viem-kms-signer';
