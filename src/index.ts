@@ -32,10 +32,10 @@ export class KmsSigner {
       async signMessage({ message }): Promise<`0x${string}`> {
         return await signDigestHex(hashMessage(message), credentials, address);
       },
-      async signTransaction(transaction) {
+      async signTransaction(transaction): Promise<`0x${string}`> {
         return await signTransaction(transaction, credentials, address);
       },
-      async signTypedData(typedData) {
+      async signTypedData(typedData): Promise<`0x${string}`> {
         return await signDigestHex(
           hashTypedData(typedData),
           credentials,

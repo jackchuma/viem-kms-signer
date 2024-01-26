@@ -3,6 +3,8 @@ import {
   GetPublicKeyCommand,
   SignCommand,
   SignCommandInput,
+  GetPublicKeyCommandOutput,
+  SignCommandOutput,
 } from '@aws-sdk/client-kms';
 import { AwsKmsSignerCredentials } from '..';
 import * as asn1 from 'asn1.js';
@@ -30,7 +32,9 @@ const EcdsaPubKey = asn1.define('EcdsaPubKey', function (this: any) {
   );
 });
 
-export async function getPublicKey(kmsCredentials: AwsKmsSignerCredentials) {
+export async function getPublicKey(
+  kmsCredentials: AwsKmsSignerCredentials,
+): Promise<GetPublicKeyCommandOutput> {
   const kms = new KMSClient(kmsCredentials);
   const input = {
     KeyId: kmsCredentials.keyId,
@@ -49,7 +53,7 @@ export function getEthereumAddress(publicKey: Buffer): `0x${string}` {
 export async function requestKmsSignature(
   plaintext: Buffer,
   kmsCredentials: AwsKmsSignerCredentials,
-) {
+): Promise<{ r: BN; s: BN }> {
   const signature = await sign(plaintext, kmsCredentials);
 
   if (!signature || signature.Signature === undefined) {
@@ -58,7 +62,10 @@ export async function requestKmsSignature(
   return findEthereumSig(Buffer.from(signature.Signature));
 }
 
-async function sign(digest: Buffer, kmsCredentials: AwsKmsSignerCredentials) {
+async function sign(
+  digest: Buffer,
+  kmsCredentials: AwsKmsSignerCredentials,
+): Promise<SignCommandOutput> {
   const kms = new KMSClient(kmsCredentials);
   const input: SignCommandInput = {
     // key id or 'Alias/<alias>'
@@ -72,7 +79,7 @@ async function sign(digest: Buffer, kmsCredentials: AwsKmsSignerCredentials) {
   return await kms.send(command);
 }
 
-export function findEthereumSig(signature: Buffer) {
+export function findEthereumSig(signature: Buffer): { r: BN; s: BN } {
   const decoded = EcdsaSigAsnParse.decode(signature, 'der');
   const { r, s } = decoded;
 
@@ -93,20 +100,19 @@ export async function determineCorrectV(
   r: BN,
   s: BN,
   expectedEthAddr: string,
-) {
+): Promise<number> {
   // This is the wrapper function to find the right v value
   // There are two matching signatues on the elliptic curve
   // we need to find the one that matches to our public key
   // it can be v = 27 or v = 28
   let v = 27;
-  let pubKey = await recoverPubKeyFromSig(msg, r, s, v);
+  const pubKey = await recoverPubKeyFromSig(msg, r, s, v);
   if (pubKey.toLowerCase() !== expectedEthAddr.toLowerCase()) {
     // if the pub key for v = 27 does not match
     // it has to be v = 28
     v = 28;
-    pubKey = await recoverPubKeyFromSig(msg, r, s, v);
   }
-  return { pubKey, v };
+  return v;
 }
 
 function recoverPubKeyFromSig(
@@ -142,7 +148,7 @@ async function _signDigest(
 ): Promise<Signature> {
   const digestBuffer = Buffer.from(digestString.slice(2), 'hex');
   const sig = await requestKmsSignature(digestBuffer, kmsCredentials);
-  const { v } = await determineCorrectV(digestBuffer, sig.r, sig.s, address);
+  const v = await determineCorrectV(digestBuffer, sig.r, sig.s, address);
   return {
     r: `0x${sig.r.toString('hex')}`,
     s: `0x${sig.s.toString('hex')}`,
