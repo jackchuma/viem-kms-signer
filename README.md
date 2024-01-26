@@ -10,6 +10,8 @@ Install the package
 npm i viem-kms-signer
 ```
 
+## Usage
+
 ```ts
 import { KmsSigner } from 'viem-kms-signer';
 
