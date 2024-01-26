@@ -3,12 +3,14 @@
   "version": "1.0.0",
   "description": "A Viem compatible signer that connects to AWS KMS",
   "main": "dist/index.js",
+  "repository": "jackchuma/viem-kms-signer",
   "scripts": {
-    "test": "rm -r dist && tsc && node dist/main.js"
+    "build": "tsc",
+    "clean": "rm -r dist"
   },
   "keywords": [],
   "author": "Jack Chuma",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "@aws-sdk/client-kms": "^3.499.0",
     "asn1.js": "^5.4.1",
