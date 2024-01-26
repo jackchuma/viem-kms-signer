@@ -62,7 +62,7 @@ export async function requestKmsSignature(
   return findEthereumSig(Buffer.from(signature.Signature));
 }
 
-async function sign(
+export async function sign(
   digest: Buffer,
   kmsCredentials: AwsKmsSignerCredentials,
 ): Promise<SignCommandOutput> {
