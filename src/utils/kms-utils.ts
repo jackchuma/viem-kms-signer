@@ -50,19 +50,21 @@ export function getEthereumAddress(publicKey: Buffer): `0x${string}` {
   return `0x${address.slice(-40)}`;
 }
 
-export async function requestKmsSignature(
+async function requestKmsSignature(
   plaintext: Buffer,
   kmsCredentials: AwsKmsSignerCredentials,
 ): Promise<{ r: BN; s: BN }> {
   const signature = await sign(plaintext, kmsCredentials);
 
   if (!signature || signature.Signature === undefined) {
-    throw new Error(`AWS KMS call failed: ${signature}`);
+    console.log('AWS KMS call failed');
+    console.log(signature);
+    throw new Error(`AWS KMS call failed`);
   }
   return findEthereumSig(Buffer.from(signature.Signature));
 }
 
-export async function sign(
+async function sign(
   digest: Buffer,
   kmsCredentials: AwsKmsSignerCredentials,
 ): Promise<SignCommandOutput> {
@@ -79,7 +81,7 @@ export async function sign(
   return await kms.send(command);
 }
 
-export function findEthereumSig(signature: Buffer): { r: BN; s: BN } {
+function findEthereumSig(signature: Buffer): { r: BN; s: BN } {
   const decoded = EcdsaSigAsnParse.decode(signature, 'der');
   const { r, s } = decoded;
 
@@ -95,7 +97,7 @@ export function findEthereumSig(signature: Buffer): { r: BN; s: BN } {
   return { r, s: s.gt(secp256k1halfN) ? secp256k1N.sub(s) : s };
 }
 
-export async function determineCorrectV(
+async function determineCorrectV(
   msg: Buffer,
   r: BN,
   s: BN,

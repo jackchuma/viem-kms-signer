@@ -1,45 +1,31 @@
-import { BN } from 'bn.js';
 import {
   getEthereumAddress,
   getPublicKey,
-  determineCorrectV,
-  findEthereumSig,
+  signDigestHex,
+  signTransaction,
 } from '../utils/kms-utils';
+import * as kmsModule from '@aws-sdk/client-kms';
+import { hashMessage, parseGwei } from 'viem';
 
-jest.mock('@aws-sdk/client-kms', () => {
-  class KMSClient {
-    async send(command) {
-      return { PublicKey: 'pubkey', command };
-    }
-  }
-
-  class GetPublicKeyCommand {
-    input: any;
-
-    constructor(input) {
-      this.input = input;
-    }
-  }
-
-  class SignCommand {}
-
-  return { KMSClient, GetPublicKeyCommand, SignCommand };
-});
+jest.mock('@aws-sdk/client-kms');
 
 describe('KMS Utils', () => {
   let credentials: any = { keyId: 'key-id' };
 
   describe('Get Public Key', () => {
     it('Should send request to AWS KMS server', async () => {
-      class GetPublicKeyCommand {
-        input: any;
+      const command = new kmsModule.GetPublicKeyCommand({
+        KeyId: credentials.keyId,
+      });
 
-        constructor(input) {
-          this.input = input;
+      jest.spyOn(kmsModule, 'KMSClient').mockImplementation(() => {
+        class KMSClient {
+          async send(command) {
+            return { PublicKey: 'pubkey', command };
+          }
         }
-      }
-
-      const command = new GetPublicKeyCommand({ KeyId: credentials.keyId });
+        return new KMSClient() as any;
+      });
 
       const res = await getPublicKey(credentials);
       expect(JSON.stringify(res)).toBe(
@@ -64,80 +50,93 @@ describe('KMS Utils', () => {
     });
   });
 
-  // describe('Request KMS Signature', () => {
-  //   it('Should get kms sig', async () => {
-  //     const plaintext = Buffer.from(
-  //       '7403bcdb90a1140e737526530bb5bc5d02f9b7c34228a44dfede3822829dd9fe',
-  //       'hex',
-  //     );
+  describe('Sign Digest Hex', () => {
+    it('Should revert if signature response does not exist', async () => {
+      const addr = '0xe94e130546485b928c9c9b9a5e69eb787172952e';
 
-  //     jest.spyOn(utils, 'sign').mockImplementation(async () => {
-  //       return {
-  //         Signature: Uint8Array.from(
-  //           Buffer.from(
-  //             '304502203f25afdb7ed67094101cd71109261886db9abbf1ba20cc53aec20ba01c2e6baa022100ab0de6d40f8960c252fc6f21e35e8369126fb19033f10953c42a61766635df82',
-  //             'hex',
-  //           ),
-  //         ),
-  //       } as any;
-  //     });
-  //     jest
-  //       .spyOn(utils, 'findEthereumSig')
-  //       .mockImplementation(() => '0xsig' as any);
+      jest.spyOn(kmsModule, 'KMSClient').mockImplementation(() => {
+        class KMSClient {
+          async send(command) {
+            return undefined;
+          }
+        }
+        return new KMSClient() as any;
+      });
 
-  //     await requestKmsSignature(plaintext, credentials);
-  //   });
-  // });
+      try {
+        await signDigestHex(hashMessage('Hello world'), credentials, addr);
+        expect(true).toBe(false);
+      } catch (e) {
+        expect(e.message).toBe('AWS KMS call failed');
+      }
+    });
 
-  describe('findEthereumSig', () => {
-    it('should work correctly', () => {
-      const sampleSignature = Buffer.from(
-        '304502203f25afdb7ed67094101cd71109261886db9abbf1ba20cc53aec20ba01c2e6baa022100ab0de6d40f8960c252fc6f21e35e8369126fb19033f10953c42a61766635df82',
-        'hex',
+    it('Should revert if signature does not exist', async () => {
+      const addr = '0xe94e130546485b928c9c9b9a5e69eb787172952e';
+
+      jest.spyOn(kmsModule, 'KMSClient').mockImplementation(() => {
+        class KMSClient {
+          async send(command) {
+            return {
+              Signature: undefined,
+            };
+          }
+        }
+        return new KMSClient() as any;
+      });
+
+      try {
+        await signDigestHex(hashMessage('Hello world'), credentials, addr);
+        expect(true).toBe(false);
+      } catch (e) {
+        expect(e.message).toBe('AWS KMS call failed');
+      }
+    });
+
+    it('Should sign digest string', async () => {
+      const addr = '0xe94e130546485b928c9c9b9a5e69eb787172952e';
+
+      jest.spyOn(kmsModule, 'KMSClient').mockImplementation(() => {
+        class KMSClient {
+          async send(command) {
+            return {
+              Signature: Uint8Array.from(
+                Buffer.from(
+                  '304502203f25afdb7ed67094101cd71109261886db9abbf1ba20cc53aec20ba01c2e6baa022100ab0de6d40f8960c252fc6f21e35e8369126fb19033f10953c42a61766635df82',
+                  'hex',
+                ),
+              ),
+            };
+          }
+        }
+        return new KMSClient() as any;
+      });
+
+      const sig = await signDigestHex(
+        hashMessage('Hello world'),
+        credentials,
+        addr,
       );
-      expect(JSON.stringify(findEthereumSig(sampleSignature))).toBe(
-        '{"r":"3f25afdb7ed67094101cd71109261886db9abbf1ba20cc53aec20ba01c2e6baa","s":"54f2192bf0769f3dad0390de1ca17c95a83f2b567b5796e7fba7fd166a0061bf"}',
+      expect(sig).toBe(
+        '0x3f25afdb7ed67094101cd71109261886db9abbf1ba20cc53aec20ba01c2e6baa54f2192bf0769f3dad0390de1ca17c95a83f2b567b5796e7fba7fd166a0061bf1c',
       );
     });
   });
 
-  describe('Determine Correct V', () => {
-    it('should get correct V if it is 28', async () => {
-      const sampleMsg = Buffer.from(
-        'a1de988600a42c4b4ab089b619297c17d53cffae5d5120d82d8a92d0bb3b78f2',
-        'hex',
+  describe('Sign Transaction', () => {
+    it('Should return sig', async () => {
+      const tx: any = {
+        maxFeePerGas: parseGwei('20'),
+        maxPriorityFeePerGas: parseGwei('3'),
+        gas: 21000n,
+        nonce: 69,
+        to: '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266',
+        chainId: 1,
+      };
+      const sig = await signTransaction(tx, credentials, tx.to);
+      expect(sig).toBe(
+        '0x02f86b014584b2d05e008504a817c80082520894f39fd6e51aad88f6f4ce6ab8827279cfffb922668080c001a03f25afdb7ed67094101cd71109261886db9abbf1ba20cc53aec20ba01c2e6baaa054f2192bf0769f3dad0390de1ca17c95a83f2b567b5796e7fba7fd166a0061bf',
       );
-      const sampleR = new BN(
-        'fa754063b93a288b9a96883fc365efb9aee7ecaf632009baa04fe429e706d50e',
-        16,
-      );
-      const sampleS = new BN(
-        '6a8971b06cd37b3da4ad04bb1298fda152a41e5c1104fd5d974d5c0a060a5e62',
-        16,
-      );
-      const expectedAddr = '0xe94e130546485b928c9c9b9a5e69eb787172952e';
-      expect(
-        await determineCorrectV(sampleMsg, sampleR, sampleS, expectedAddr),
-      ).toBe(28);
-    });
-
-    it('should get correct V if it is 27', async () => {
-      const sampleMsg = Buffer.from(
-        'a1de988600a42c4b4ab089b619297c17d53cffae5d5120d82d8a92d0bb3b78f2',
-        'hex',
-      );
-      const sampleR = new BN(
-        '904d320777ceae0232282cbf6da3809a678541cdef7f4f3328242641ceecb0dc',
-        16,
-      );
-      const sampleS = new BN(
-        '5b7f7afe18221049a1e176a89a60b6c10df8c0e838edb9b2f11ae1fb50a28271',
-        16,
-      );
-      const expectedAddr = '0xe94e130546485b928c9c9b9a5e69eb787172952e';
-      expect(
-        await determineCorrectV(sampleMsg, sampleR, sampleS, expectedAddr),
-      ).toBe(27);
     });
   });
 });
