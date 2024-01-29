@@ -1,6 +1,6 @@
 {
   "name": "viem-kms-signer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A Viem compatible signer that connects to AWS KMS",
   "main": "dist/index.js",
   "repository": "jackchuma/viem-kms-signer",
